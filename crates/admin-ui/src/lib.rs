@@ -1,0 +1,1 @@
+// Admin UI placeholder - will be implemented as a web interface later

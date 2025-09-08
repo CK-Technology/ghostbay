@@ -1,0 +1,30 @@
+[package]
+name = "ghostbay-auth"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Crypto & security
+ring.workspace = true
+aws-sigv4.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Observability
+tracing.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Utilities
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+hex = "0.4"
+urlencoding = "2.1"
+rand = "0.8"

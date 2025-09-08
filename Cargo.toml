@@ -1,6 +1,57 @@
-[package]
-name = "ghostbay"
+[workspace]
+members = [
+    "crates/api",
+    "crates/auth", 
+    "crates/engine",
+    "crates/catalog",
+    "crates/gateway",
+    "crates/cli",
+    "crates/admin-ui"
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["GhostBay Contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/your-org/ghostbay"
 
-[dependencies]
+[workspace.dependencies]
+# Core runtime
+tokio = { version = "1.40", features = ["full"] }
+axum = "0.7"
+hyper = "1.4"
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors", "compression-gzip"] }
+
+# Database & persistence
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "postgres", "migrate", "chrono", "uuid", "macros"] }
+
+# Crypto & security
+ring = "0.17"
+aws-sigv4 = "1.2"
+md-5 = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+prometheus = "0.13"
+opentelemetry = "0.24"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+color-eyre = "0.6"
+
+# Utilities
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+bytes = "1.7"
+futures = "0.3"

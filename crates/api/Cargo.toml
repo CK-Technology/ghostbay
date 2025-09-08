@@ -1,0 +1,36 @@
+[package]
+name = "ghostbay-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core runtime
+tokio.workspace = true
+axum.workspace = true
+hyper.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+
+# Internal crates
+ghostbay-auth = { path = "../auth" }
+ghostbay-engine = { path = "../engine" }
+ghostbay-catalog = { path = "../catalog" }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Observability
+tracing.workspace = true
+prometheus.workspace = true
+
+# Utilities
+anyhow.workspace = true
+thiserror.workspace = true
+bytes.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+futures.workspace = true
+sqlx.workspace = true

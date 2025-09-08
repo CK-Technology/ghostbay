@@ -1,0 +1,31 @@
+[package]
+name = "ghostbay-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core runtime
+tokio.workspace = true
+
+# Internal crates
+ghostbay-catalog = { path = "../catalog" }
+
+# Crypto & I/O
+md-5.workspace = true
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Serialization
+serde.workspace = true
+
+# Observability
+tracing.workspace = true
+
+# Utilities
+anyhow.workspace = true
+thiserror.workspace = true
+bytes.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+futures.workspace = true

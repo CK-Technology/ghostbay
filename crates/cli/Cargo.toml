@@ -1,0 +1,28 @@
+[package]
+name = "ghostbay-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ghostbay"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+ghostbay-catalog = { path = "../catalog" }
+ghostbay-auth = { path = "../auth" }
+
+# CLI
+clap.workspace = true
+color-eyre.workspace = true
+
+# Configuration
+toml.workspace = true
+serde.workspace = true
+
+# Utilities
+anyhow.workspace = true
+tokio.workspace = true
+chrono.workspace = true
