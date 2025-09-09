@@ -251,3 +251,225 @@ impl ObjectRepository {
         Ok(result.rows_affected() > 0)
     }
 }
+
+pub struct MultipartUploadRepository {
+    pool: SqlitePool,
+}
+
+impl MultipartUploadRepository {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn create(&self, bucket_id: Uuid, object_key: &str, upload_id: &str) -> Result<MultipartUpload> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let expires_at = now + chrono::Duration::days(7); // 7 days default expiration
+
+        sqlx::query(
+            r#"
+            INSERT INTO multipart_uploads (id, bucket_id, object_key, upload_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id.to_string())
+        .bind(bucket_id.to_string())
+        .bind(object_key)
+        .bind(upload_id)
+        .bind(now.to_rfc3339())
+        .bind(expires_at.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        let upload = MultipartUpload {
+            id,
+            bucket_id,
+            object_key: object_key.to_string(),
+            upload_id: upload_id.to_string(),
+            created_at: now,
+            expires_at: Some(expires_at),
+        };
+
+        Ok(upload)
+    }
+
+    pub async fn find_by_upload_id(&self, upload_id: &str) -> Result<Option<MultipartUpload>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, bucket_id, object_key, upload_id, created_at, expires_at
+            FROM multipart_uploads 
+            WHERE upload_id = ?
+            "#,
+        )
+        .bind(upload_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            let upload = MultipartUpload {
+                id: Uuid::parse_str(&row.get::<String, _>("id"))?,
+                bucket_id: Uuid::parse_str(&row.get::<String, _>("bucket_id"))?,
+                object_key: row.get("object_key"),
+                upload_id: row.get("upload_id"),
+                created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))?.with_timezone(&Utc),
+                expires_at: row.get::<Option<String>, _>("expires_at")
+                    .map(|s| chrono::DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
+                    .transpose()?,
+            };
+            Ok(Some(upload))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn delete(&self, upload_id: &str) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM multipart_uploads WHERE upload_id = ?")
+            .bind(upload_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn list_expired(&self) -> Result<Vec<MultipartUpload>> {
+        let now = Utc::now();
+        let rows = sqlx::query(
+            r#"
+            SELECT id, bucket_id, object_key, upload_id, created_at, expires_at
+            FROM multipart_uploads 
+            WHERE expires_at < ?
+            "#,
+        )
+        .bind(now.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut uploads = Vec::new();
+        for row in rows {
+            let upload = MultipartUpload {
+                id: Uuid::parse_str(&row.get::<String, _>("id"))?,
+                bucket_id: Uuid::parse_str(&row.get::<String, _>("bucket_id"))?,
+                object_key: row.get("object_key"),
+                upload_id: row.get("upload_id"),
+                created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))?.with_timezone(&Utc),
+                expires_at: row.get::<Option<String>, _>("expires_at")
+                    .map(|s| chrono::DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
+                    .transpose()?,
+            };
+            uploads.push(upload);
+        }
+
+        Ok(uploads)
+    }
+}
+
+pub struct MultipartPartRepository {
+    pool: SqlitePool,
+}
+
+impl MultipartPartRepository {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn create(&self, upload_id: Uuid, part_number: i32, etag: String, size: i64, storage_path: String) -> Result<MultipartPart> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        sqlx::query(
+            r#"
+            INSERT INTO multipart_parts (id, upload_id, part_number, etag, size, created_at, storage_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id.to_string())
+        .bind(upload_id.to_string())
+        .bind(part_number)
+        .bind(&etag)
+        .bind(size)
+        .bind(now.to_rfc3339())
+        .bind(&storage_path)
+        .execute(&self.pool)
+        .await?;
+
+        let part = MultipartPart {
+            id,
+            upload_id,
+            part_number,
+            etag,
+            size,
+            created_at: now,
+            storage_path,
+        };
+
+        Ok(part)
+    }
+
+    pub async fn find_by_upload_and_part(&self, upload_id: Uuid, part_number: i32) -> Result<Option<MultipartPart>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, upload_id, part_number, etag, size, created_at, storage_path
+            FROM multipart_parts 
+            WHERE upload_id = ? AND part_number = ?
+            "#,
+        )
+        .bind(upload_id.to_string())
+        .bind(part_number)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            let part = MultipartPart {
+                id: Uuid::parse_str(&row.get::<String, _>("id"))?,
+                upload_id: Uuid::parse_str(&row.get::<String, _>("upload_id"))?,
+                part_number: row.get("part_number"),
+                etag: row.get("etag"),
+                size: row.get("size"),
+                created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))?.with_timezone(&Utc),
+                storage_path: row.get("storage_path"),
+            };
+            Ok(Some(part))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn list_by_upload(&self, upload_id: Uuid) -> Result<Vec<MultipartPart>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, upload_id, part_number, etag, size, created_at, storage_path
+            FROM multipart_parts 
+            WHERE upload_id = ?
+            ORDER BY part_number
+            "#,
+        )
+        .bind(upload_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut parts = Vec::new();
+        for row in rows {
+            let part = MultipartPart {
+                id: Uuid::parse_str(&row.get::<String, _>("id"))?,
+                upload_id: Uuid::parse_str(&row.get::<String, _>("upload_id"))?,
+                part_number: row.get("part_number"),
+                etag: row.get("etag"),
+                size: row.get("size"),
+                created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))?.with_timezone(&Utc),
+                storage_path: row.get("storage_path"),
+            };
+            parts.push(part);
+        }
+
+        Ok(parts)
+    }
+
+    pub async fn delete_by_upload(&self, upload_id: Uuid) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM multipart_parts WHERE upload_id = ?")
+            .bind(upload_id.to_string())
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+}

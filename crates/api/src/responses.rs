@@ -68,3 +68,41 @@ pub struct CopyObjectResult {
     #[serde(rename = "LastModified")]
     pub last_modified: DateTime<Utc>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct InitiateMultipartUploadResponse {
+    pub bucket: String,
+    pub key: String,
+    pub upload_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct CompleteMultipartUploadResponse {
+    pub location: String,
+    pub bucket: String,
+    pub key: String,
+    #[serde(rename = "ETag")]
+    pub etag: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Part {
+    #[serde(rename = "ETag")]
+    pub etag: String,
+    pub part_number: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompleteMultipartUploadRequest {
+    #[serde(rename = "CompleteMultipartUpload")]
+    pub complete_multipart_upload: CompleteMultipartUploadData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct CompleteMultipartUploadData {
+    pub part: Vec<Part>,
+}

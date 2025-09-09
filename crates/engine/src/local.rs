@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures::{Stream, StreamExt, TryStreamExt};
+use md5::Digest;
 use std::path::{Path, PathBuf};
 use tokio::{fs, io::AsyncWriteExt};
 use uuid::Uuid;
@@ -186,6 +187,134 @@ impl StorageEngine for LocalStorageEngine {
         let etag = format!("\"{}\"", metadata.len());
         
         Ok(etag)
+    }
+    
+    // Multipart upload operations
+    async fn create_multipart_upload(&self, request: CreateMultipartUploadRequest) -> Result<String> {
+        self.ensure_bucket_dir(&request.bucket).await?;
+        
+        // Generate a unique upload ID
+        let upload_id = format!("mpu_{}", Uuid::new_v4());
+        
+        // Create a temp directory for this multipart upload
+        let upload_dir = self.config.temp_dir.join(&upload_id);
+        fs::create_dir_all(&upload_dir).await?;
+        
+        // Store metadata about the upload
+        let metadata = serde_json::json!({
+            "bucket": request.bucket,
+            "key": request.key,
+            "content_type": request.content_type,
+            "upload_id": upload_id,
+            "metadata": request.metadata
+        });
+        
+        let metadata_path = upload_dir.join("metadata.json");
+        fs::write(&metadata_path, metadata.to_string()).await?;
+        
+        Ok(upload_id)
+    }
+    
+    async fn upload_part(&self, request: UploadPartRequest) -> Result<String> {
+        let upload_dir = self.config.temp_dir.join(&request.upload_id);
+        
+        if !upload_dir.exists() {
+            return Err(anyhow!("Multipart upload not found: {}", request.upload_id));
+        }
+        
+        // Write part to a numbered file
+        let part_path = upload_dir.join(format!("part_{:05}", request.part_number));
+        let mut part_file = fs::File::create(&part_path).await?;
+        let mut stream = request.data;
+        
+        use md5::Digest;
+        let mut hasher = md5::Md5::new();
+        
+        while let Some(chunk) = stream.try_next().await? {
+            hasher.update(&chunk);
+            part_file.write_all(&chunk).await?;
+        }
+        
+        part_file.sync_all().await?;
+        drop(part_file);
+        
+        let etag = format!("{:x}", hasher.finalize());
+        Ok(etag)
+    }
+    
+    async fn complete_multipart_upload(&self, request: CompleteMultipartUploadRequest) -> Result<String> {
+        let upload_dir = self.config.temp_dir.join(&request.upload_id);
+        
+        if !upload_dir.exists() {
+            return Err(anyhow!("Multipart upload not found: {}", request.upload_id));
+        }
+        
+        // Read upload metadata
+        let metadata_path = upload_dir.join("metadata.json");
+        let metadata_content = fs::read_to_string(&metadata_path).await?;
+        let upload_metadata: serde_json::Value = serde_json::from_str(&metadata_content)?;
+        
+        // Verify bucket and key match
+        let expected_bucket = upload_metadata["bucket"].as_str().unwrap_or("");
+        let expected_key = upload_metadata["key"].as_str().unwrap_or("");
+        
+        if expected_bucket != request.bucket || expected_key != request.key {
+            return Err(anyhow!("Bucket/key mismatch in multipart upload"));
+        }
+        
+        // Sort parts by part number
+        let mut sorted_parts = request.parts.clone();
+        sorted_parts.sort_by_key(|p| p.part_number);
+        
+        // Validate all parts exist and etags match
+        for part in &sorted_parts {
+            let part_path = upload_dir.join(format!("part_{:05}", part.part_number));
+            if !part_path.exists() {
+                return Err(anyhow!("Part {} not found", part.part_number));
+            }
+        }
+        
+        // Create the final object by concatenating parts
+        let final_path = self.object_path(&request.bucket, &request.key);
+        if let Some(parent) = final_path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        
+        let mut final_file = fs::File::create(&final_path).await?;
+        let mut combined_hasher = md5::Md5::new();
+        
+        for part in &sorted_parts {
+            let part_path = upload_dir.join(format!("part_{:05}", part.part_number));
+            let part_data = fs::read(&part_path).await?;
+            combined_hasher.update(&part_data);
+            final_file.write_all(&part_data).await?;
+        }
+        
+        final_file.sync_all().await?;
+        drop(final_file);
+        
+        // Clean up temp directory
+        fs::remove_dir_all(&upload_dir).await?;
+        
+        // Calculate final ETag (for multipart, it's different from simple MD5)
+        // AWS uses: MD5 of concatenated MD5s + "-" + part count
+        let mut etag_parts = Vec::new();
+        for part in &sorted_parts {
+            etag_parts.extend_from_slice(part.etag.as_bytes());
+        }
+        let final_etag = format!("{:x}-{}", md5::Md5::digest(&etag_parts), sorted_parts.len());
+        
+        Ok(final_etag)
+    }
+    
+    async fn abort_multipart_upload(&self, _bucket: &str, _key: &str, upload_id: &str) -> Result<()> {
+        let upload_dir = self.config.temp_dir.join(upload_id);
+        
+        if upload_dir.exists() {
+            fs::remove_dir_all(&upload_dir).await?;
+        }
+        
+        Ok(())
     }
 }
 

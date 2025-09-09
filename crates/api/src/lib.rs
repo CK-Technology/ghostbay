@@ -36,10 +36,12 @@ pub fn create_router() -> Router<AppState> {
         .route("/:bucket", put(handlers::create_bucket))
         .route("/:bucket", get(handlers::list_objects))
         .route("/:bucket", delete(handlers::delete_bucket))
-        .route("/:bucket/*key", put(handlers::put_object))
+        // Object routes with conditional multipart handling
+        .route("/:bucket/*key", put(handlers::put_object_or_part))
+        .route("/:bucket/*key", post(handlers::create_multipart_upload_or_complete))
+        .route("/:bucket/*key", delete(handlers::delete_object_or_abort_upload))
         .route("/:bucket/*key", get(handlers::get_object))
         .route("/:bucket/*key", axum::routing::head(handlers::head_object))
-        .route("/:bucket/*key", delete(handlers::delete_object))
         // Health check
         .route("/health", get(health_check))
         // Apply middleware

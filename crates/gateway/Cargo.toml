@@ -33,3 +33,8 @@ serde.workspace = true
 
 # Utilities
 anyhow.workspace = true
+
+# TLS Support
+rustls = "0.21"
+rustls-pemfile = "2.0"
+axum-server = { version = "0.6", features = ["tls-rustls"] }
