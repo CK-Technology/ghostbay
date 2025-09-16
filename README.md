@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/ghostbay-logo.png" alt="GhostBay Logo" width="200"/>
+</p>
+
 # GhostBay 🌊
 
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust\&logoColor=white)
